@@ -2,6 +2,13 @@
 
 A pre-boot execution environment for Apple boards built on top of checkra1n.
 
+## About this fork
+I am working on the ability to load a custom SEPOS image in combination with blackbird. At the moment, the process to do so is as follows:
+* `sep pwn` to get code execution in SEPROM
+* `/send sep.img4`
+* `sep custom` to load the custom SEPOS image
+Then, you can boot the device and it will boot into the custom SEPOS image. This is still a work in progress, and for this reason is currently broken. I am yet to figure out why, but it seems that XNU tries to boot SEPOS after PongoOS, which shouldn't happen. Because of this, it will fail to boot due to a hash mismatch between the expected SEPOS image and the actual one.
+
 ## Building on macOS
 
 - Install Xcode + command-line utilities

@@ -30,7 +30,7 @@
 #include <recfg/recfg_soc.h>
 
 #define IRQ_T8015_SEP_INBOX_NOT_EMPTY 0x79
-// #define SEP_DEBUG
+#define SEP_DEBUG
 
 struct mailbox_registers32 {
     volatile uint32_t dis_int; // 0x0
@@ -88,6 +88,7 @@ static int is_sep64 = 0;
 struct event sep_msg_event, sep_rand_event, sep_boot_event, sep_load_event, sep_panic_event, sep_done_tz0_event, sep_done_integrity_tree_event;
 volatile uint32_t rnd_val;
 volatile uint32_t sep_has_loaded, sep_has_booted, sep_has_panicked, sep_has_done_tz0, seprom_has_left_to_sepos;
+uint32_t *custom_sep_image_buf, custom_sep_image_size;
 void (*sepfw_kpf_hook)(void* sepfw_bytes, size_t sepfw_size);
 void sepfw_kpf(void* sepfw_bytes, size_t sepfw_size) {
     uint32_t* insn_stream = sepfw_bytes;
@@ -292,6 +293,25 @@ static int parse_sepfw(Img4 *img4, uint32_t *imglen)
     if(imglen) *imglen = len;
     return 0;
 }
+static int parse_custom_sepfw(Img4 *img4, uint32_t *imglen, uint32_t *custom)
+{
+    uint32_t len = *imglen;
+    DERByte* data = custom;
+    uint32_t type = 0;
+    DERItem tmp = { .data = data, .length = len };
+    DERDecodedInfo decoded;
+    int rv = DERDecodeItem(&tmp, &decoded);
+    if (0 != rv) return rv;
+    len = decoded.content.length + (decoded.content.data - data);
+    rv = Img4DecodeInit(data, len, img4);
+    if (0 != rv) return rv;
+    rv = Img4DecodeGetPayloadType(img4, &type);
+    if (0 != rv) return rv;
+    if (type != 0x73657069) return 0x73657069; // sepi
+
+    if(imglen) *imglen = len;
+    return 0;
+}
 static bool seprom_config_integrity_tree(bool sync) {
     // This is a 64-bit thing
     if(!is_sep64) return true;
@@ -377,6 +397,12 @@ void seprom_fwload() {
     // We clear this here to account for "sep auto" followed by manual invocation
     is_waiting_to_boot = 0;
     seprom_load_sepos(gSEPFW, 0);
+}
+
+void seprom_custom_fwload() {
+    // We clear this here to account for "sep auto" followed by manual invocation
+    is_waiting_to_boot = 0;
+    seprom_load_sepos(custom_sep_image_buf, 0);
 }
 asm(".text\n"
     ".align 2\n"
@@ -524,6 +550,7 @@ static void aes_cbc(void *key, void *iv, void *data, size_t size)
 
 void copy_block(void* to, void* from);
 void sep_aes_kbag(uint32_t* kbag_bytes_32, uint32_t * kbag_out, char mode);
+bool reloading_custom_sepi = false;
 void reload_sepi(Img4 *img4) {
     DERItem key;
 
@@ -614,30 +641,32 @@ void reload_sepi(Img4 *img4) {
 #endif
         }
     }
-    uint32_t sepm[3];
-    sepm[0] = sep_blackbird_read(sepbp + 0x4c);
-    sepm[1] = sep_blackbird_read(sepbp + 0x50);
-    sepm[2] = sep_blackbird_read(sepbp + 0x54);
+    if (!reloading_custom_sepi) {
+        uint32_t sepm[3];
+        sepm[0] = sep_blackbird_read(sepbp + 0x4c);
+        sepm[1] = sep_blackbird_read(sepbp + 0x50);
+        sepm[2] = sep_blackbird_read(sepbp + 0x54);
 
-    uint32_t sepm_off  = *(uint32_t*)(((uint64_t)(&sepm[0])) + 0x3);
-    uint16_t sepm_sz  = *(uint16_t*)(((uint64_t)(&sepm[0])) + 0x3 + 4);
+        uint32_t sepm_off  = *(uint32_t*)(((uint64_t)(&sepm[0])) + 0x3);
+        uint16_t sepm_sz  = *(uint16_t*)(((uint64_t)(&sepm[0])) + 0x3 + 4);
 
-    page_aligned_size = sepm_sz + 0xfff;
-    page_aligned_size &= ~0xfff;
-    sep_copyout_block(sepfw_bytes + page_aligned_size - 0x1000, sepm_off + page_aligned_size - 0x1000);
-    sep_copyout_block(sepfw_bytes + page_aligned_size - 0x1000, sepm_off + page_aligned_size - 0x1000);
-    memcpy(sepfw_bytes, img4->manifestRaw.data, sepm_sz);
+        page_aligned_size = sepm_sz + 0xfff;
+        page_aligned_size &= ~0xfff;
+        sep_copyout_block(sepfw_bytes + page_aligned_size - 0x1000, sepm_off + page_aligned_size - 0x1000);
+        sep_copyout_block(sepfw_bytes + page_aligned_size - 0x1000, sepm_off + page_aligned_size - 0x1000);
+        memcpy(sepfw_bytes, img4->manifestRaw.data, sepm_sz);
 
-    for (size_t s=0; s < page_aligned_size; s+=0x1000) {
-        while (1) {
-            sep_copy_block(sepm_off + (uint32_t)s, sepfw_bytes + s);
-            sep_copyout_block(checkr, sepm_off + (uint32_t)s);
-            if (memcmp(checkr, sepfw_bytes + s, 0x1000) == 0) {
-                break;
+        for (size_t s=0; s < page_aligned_size; s+=0x1000) {
+            while (1) {
+                sep_copy_block(sepm_off + (uint32_t)s, sepfw_bytes + s);
+                sep_copyout_block(checkr, sepm_off + (uint32_t)s);
+                if (memcmp(checkr, sepfw_bytes + s, 0x1000) == 0) {
+                    break;
+                }
+    #ifdef SEP_DEBUG
+                fiprintf(stderr, "detected corrupted write: %zx\n", s);
+    #endif
             }
-#ifdef SEP_DEBUG
-            fiprintf(stderr, "detected corrupted write: %zx\n", s);
-#endif
         }
     }
     fiprintf(stderr, "SEP payload ready to boot\n");
@@ -879,6 +908,69 @@ out:
         free_contig(sep_image_buf, sep_image_buf_len);
     if(replay_layout)
         free(replay_layout);
+}
+
+// img4tool -c sep.img4 -p sep-firmware.XXXX.RELEASE.im4p
+static void sep_custom_command(const char* cmd, char* args) {
+
+    // Load uploaded image into buffer
+    if(!loader_xfer_recv_count)
+    {
+        puts("Please upload a SEPOS image before issuing this command.");
+        return;
+    }
+    if(custom_sep_image_buf)
+    {
+        free(custom_sep_image_buf);
+    }
+    custom_sep_image_buf = malloc(loader_xfer_recv_count);
+    if(!custom_sep_image_buf)
+    {
+        panic("Failed to allocate heap for overlay");
+    }
+    custom_sep_image_size = loader_xfer_recv_count;
+    memcpy(custom_sep_image_buf, loader_xfer_recv_data, custom_sep_image_size);
+    loader_xfer_recv_count = 0;
+    iprintf("Custom SEP image loaded\n");
+
+    // Parse image
+    Img4 custom_sep_image;
+    parse_custom_sepfw(&custom_sep_image, &custom_sep_image_size, custom_sep_image_buf);
+
+    // Reload SEPOS image
+    if (!sep_is_pwned) {
+        iprintf("SEP is not pwned, please run sep pwn first\n");
+        return;
+    }
+    reloading_custom_sepi = true;
+    reload_sepi(&custom_sep_image);
+    reloading_custom_sepi = false;
+    uint32_t bootedLen;
+    uint32_t loadedLen;
+    uint32_t *booted = dt_prop(gSEPDev, "sepfw-booted", &bootedLen);
+    uint32_t *loaded = dt_prop(gSEPDev, "sepfw-loaded", &loadedLen);
+    *booted = 0x00000001;
+    *loaded = 0x00000001;
+    seprom_boot_tz0_async();
+    
+
+    // // Boot SEPOS if needed
+    // if (!sep_has_booted && gXNUExpectsBooted) {
+    //     if (sep_has_loaded) { iprintf("SEPOS loaded\n"); }
+    //     if (seprom_has_left_to_sepos) { iprintf("SEPROM left to SEPOS\n"); }
+    //     // else { seprom_custom_fwload(); }
+    //     iprintf("Booting SEPOS");
+    //     // sep_teardown();
+    //     spin(2400);
+    //     tz_lockdown();
+    //     seprom_ping();
+    //     // seprom_custom_fwload();
+    //     seprom_boot_tz0();
+    //     seprom_ping();
+    // }
+    // seprom_custom_fwload();
+    // iprintf("SEPOS loaded\n");
+
 }
 
 void seprom_load_art(void* art, char mode) {
@@ -1144,6 +1236,7 @@ static struct sep_command command_table[] = {
     SEP_COMMAND("poke", "write a 32 bit value", sep_pwned_poke),
     SEP_COMMAND("jump", "jump to address", sep_pwned_jump),
     SEP_COMMAND("boot", "boot pwned tz0 image", sep_pwned_boot),
+    SEP_COMMAND("custom", "load a custom sepos image", sep_custom_command),
 #endif
     SEP_COMMAND("encrypt", "encrypt a kbag (requires pwned SEPROM)", sep_aes_encrypt),
     SEP_COMMAND("decrypt", "decrypt a kbag (requires pwned SEPROM)", sep_aes_decrypt),
