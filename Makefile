@@ -135,6 +135,8 @@ all: $(BUILD)/Pongo.bin $(BUILD)/checkra1n-kpf-pongo | $(BUILD)
 
 $(BUILD)/Pongo.bin: $(BUILD)/vmacho $(BUILD)/Pongo | $(BUILD)
 	$(BUILD)/vmacho -fM 0x80000 $(BUILD)/Pongo $@
+	xxd -iC $(BUILD)/Pongo.bin > $(BUILD)/Pongo.h
+	cp $(BUILD)/Pongo.h ../../include/boot/payloads/checkra1n/headers/Pongo.h
 
 $(BUILD)/Pongo: Makefile $(PONGO_C) $(PONGO_H) $(LIB)/fixup/libc.a | $(BUILD)
 	$(EMBEDDED_CC) -o $@ $(PONGO_C) $(EMBEDDED_CC_FLAGS) $(PONGO_CC_FLAGS)
