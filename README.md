@@ -2,6 +2,10 @@
 
 A pre-boot execution environment for Apple boards built on top of checkra1n.
 
+## About this fork
+
+This fork is used with [Achilles](https://github.com/alfiecg24/Achilles) in order to hold any necessary changes to PongoOS for it to work with Achilles, as well as other changes that may be useful for the project. This branch (the "Achilles" branch) will only build properly as a submodule of Achilles, and will not build properly on its own - as it has to copy header files into the Achilles project directory.
+
 ## Building on macOS
 
 - Install Xcode + command-line utilities
