@@ -145,10 +145,10 @@ $(BUILD)/Pongo: Makefile $(PONGO_C) $(PONGO_H) $(LIB)/fixup/libc.a | $(BUILD)
 
 $(BUILD)/checkra1n-kpf-pongo: Makefile $(KPF_C) $(KPF_H) $(PONGO_H) $(LIB)/fixup/libc.a | $(BUILD)
 	$(EMBEDDED_CC) -o $@ $(KPF_C) $(EMBEDDED_CC_FLAGS) $(KPF_CC_FLAGS)
-	@xxd -iC $(BUILD)/checkra1n-kpf-pongo > $(BUILD)/checkra1n-kpf-pongo.h
-	@mkdir -p ../../include/include/kernel/patchfinder
-	@cp $(BUILD)/checkra1n-kpf-pongo.h ../../include/kernel/patchfinder/kpf.h
-	@$(RM) $(BUILD)/checkra1n-kpf-pongo.h
+	@xxd -iC $(BUILD)/checkra1n-kpf-pongo > $(BUILD)/kpf.h
+	@mkdir -p ../../include/kernel/patchfinder
+	@cp $(BUILD)/kpf.h ../../include/kernel/patchfinder/
+	@$(RM) $(BUILD)/kpf.h
 
 $(BUILD)/vmacho: Makefile $(AUX)/vmacho.c | $(BUILD)
 	$(CC) -Wall -O3 -o $@ $(AUX)/vmacho.c $(CFLAGS)
