@@ -138,12 +138,17 @@ $(BUILD)/Pongo.bin: $(BUILD)/vmacho $(BUILD)/Pongo | $(BUILD)
 	@xxd -iC $(BUILD)/Pongo.bin > $(BUILD)/Pongo.h
 	@mkdir -p ../../include/boot/pongo/headers
 	@cp $(BUILD)/Pongo.h ../../include/boot/pongo/headers/
+	@$(RM) $(BUILD)/Pongo.h
 
 $(BUILD)/Pongo: Makefile $(PONGO_C) $(PONGO_H) $(LIB)/fixup/libc.a | $(BUILD)
 	$(EMBEDDED_CC) -o $@ $(PONGO_C) $(EMBEDDED_CC_FLAGS) $(PONGO_CC_FLAGS)
 
 $(BUILD)/checkra1n-kpf-pongo: Makefile $(KPF_C) $(KPF_H) $(PONGO_H) $(LIB)/fixup/libc.a | $(BUILD)
 	$(EMBEDDED_CC) -o $@ $(KPF_C) $(EMBEDDED_CC_FLAGS) $(KPF_CC_FLAGS)
+	@xxd -iC $(BUILD)/checkra1n-kpf-pongo > $(BUILD)/checkra1n-kpf-pongo.h
+	@mkdir -p ../../include/include/kernel/patchfinder
+	@cp $(BUILD)/checkra1n-kpf-pongo.h ../../include/kernel/patchfinder/kpf.h
+	@$(RM) $(BUILD)/checkra1n-kpf-pongo.h
 
 $(BUILD)/vmacho: Makefile $(AUX)/vmacho.c | $(BUILD)
 	$(CC) -Wall -O3 -o $@ $(AUX)/vmacho.c $(CFLAGS)
