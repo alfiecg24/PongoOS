@@ -208,6 +208,7 @@ void screen_invert() {
     cache_clean(gFramebuffer, gHeight * gRowPixels * 4);
 }
 
+uint32_t eraseLogoBitmap[32] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 uint32_t gLogoBitmap[32] = { 0x0, 0xa00, 0x400, 0x5540, 0x7fc0, 0x3f80, 0x3f80, 0x1f00, 0x1f00, 0x1f00, 0x3f80, 0xffe0, 0x3f80, 0x3f80, 0x3f83, 0x103f9f, 0x18103ffb, 0xe3fffd5, 0x1beabfab, 0x480d7fd5, 0xf80abfab, 0x480d7fd5, 0x1beabfab, 0xe3fffd5, 0x18107ffb, 0x107fdf, 0x7fc3, 0xffe0, 0xffe0, 0xffe0, 0x1fff0, 0x1fff0 };
 
 void screen_init() {
@@ -243,6 +244,19 @@ void screen_init() {
 
     uint32_t logo_x_begin = (gRowPixels / 2) - (16 * logo_scaler_factor);
     uint32_t logo_y_begin = (height / 2) - (16 * logo_scaler_factor);
+
+    // Erase Apple logo
+    for (uint32_t y = 0; y < (32 * logo_scaler_factor); y++) {
+        uint32_t b = eraseLogoBitmap[y / logo_scaler_factor];
+        for (uint32_t x = 0; x < (32 * logo_scaler_factor); x++) {
+            uint32_t ind = logo_x_begin + x + ((logo_y_begin + y) * gRowPixels);
+            uint32_t curcolor = gFramebuffer[ind];
+            if (b & (1 << (x / logo_scaler_factor))) {
+                curcolor ^= 0xFFFFFFFF;
+            }
+            gFramebuffer[ind] = curcolor;
+        }
+    }
 
     for (uint32_t y = 0; y < (32 * logo_scaler_factor); ++y) {
         uint32_t b = gLogoBitmap[y / logo_scaler_factor];
